@@ -5,21 +5,21 @@ def main():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host="localhost"))
     tasks_channel = connection.channel()
 
-    tasks_channel.queue_declare(queue="tasks")
+    tasks_channel.queue_declare(queue="jobs")
 
     results_channel = connection.channel()
 
-    results_channel.queue_declare(queue="results")
+    results_channel.queue_declare(queue="results", auto_delete=True)
 
     def callback(ch, method, properties, body):
         print(f"Received {body}")
         results_channel.basic_publish(
-            exchange="", routing_key="results", body=f'Processed "{body}"'
+            exchange="", routing_key="results", body=f'Processed "{body}"'.encode("utf-8")
         )
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     tasks_channel.basic_consume(
-        queue="tasks", on_message_callback=callback, auto_ack=False
+        queue="jobs", on_message_callback=callback, auto_ack=False
     )
 
     print(" [*] Waiting for messages. To exit press CTRL+C")
