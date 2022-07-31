@@ -1,24 +1,19 @@
-"""Сервис простановки ссылок в документе
-Получает на вход текст документа,
-на выходе координаты фрагментов и координаты целей ссылок
-"""
-import os
-from typing import List, Optional, Dict, Any, Union
+"""API для исполнения модели"""
+
+from typing import List, Dict, Any, Union
 import asyncio
 import logging
 from logging.config import dictConfig
 import uuid
 import json
 import itertools
+from timeit import default_timer
 
 from fastapi import FastAPI
 import aio_pika
-from itsdangerous import json
-
-# pylint: disable=no-name-in-module
-from pydantic import BaseModel
 
 from logger_config import log_config
+from app_stat import ModelStatStore, ModelStat
 
 dictConfig(log_config)
 
@@ -32,11 +27,13 @@ app = create_app()
 
 jobs_channel = None
 jobs_queue_name = "jobs"
-results_queue_name = f"results_{uuid.uuid4()}"
+results_queue_name = f"results-{uuid.uuid4()}"
 
 job_counter = itertools.count()
 job_id_to_event = {}
 job_id_to_result = {}
+
+stat_store = ModelStatStore()
 
 
 @app.on_event("startup")
@@ -45,13 +42,11 @@ def startup():
     asyncio.ensure_future(result_processor(loop))
 
 
-@app.post("/transform")
-async def resolve(text: Union[List, Dict, Any]) -> List[float]:
-    """
-    На входе текст (не json), на выходе json
-    """
+@app.post("/transform", response_model=List[float])
+async def transform(text: Union[List, Dict, Any]) -> List[float]:
     if not isinstance(text, str):
-        raise TypeError("Ожидается строка")
+        raise TypeError(f"Got {type(text)}. Expected str.")
+    start = default_timer()
     logger.debug('Request: "%s..." (%d symbols).', text[:100], len(text))
     # Put job to queue
     job_id = next(job_counter)
@@ -68,8 +63,19 @@ async def resolve(text: Union[List, Dict, Any]) -> List[float]:
     # Get result from dict by job id
     result = job_id_to_result[job_id]
     logger.debug("Got result: %s", repr(result))
+    stop = default_timer()
+    stat_store.update(result = result, response_time = stop - start)
     del job_id_to_result[job_id]
-    return result
+    return result["embedding"]
+
+@app.get("/stat", response_model = ModelStat)
+async def stat() -> ModelStat:
+    return ModelStat(
+        workers = { id_: store.get_worker_stat() for id_, store in stat_store.workers.items()},
+        queue_lenght = len(job_id_to_event),
+        response_time= stat_store.mean_response_time
+    )
+
 
 async def result_processor(loop: asyncio.AbstractEventLoop) -> None:
     global jobs_channel
@@ -92,7 +98,7 @@ async def result_processor(loop: asyncio.AbstractEventLoop) -> None:
                     logger.debug("Incoming message: %s", body)
                     result = json.loads(body)
                     job_id = result["id"]
-                    job_id_to_result[job_id] = result["embedding"]
+                    job_id_to_result[job_id] = result
                     job_id_to_event[job_id].set()
                     del job_id_to_event[job_id]
                     
@@ -101,4 +107,4 @@ async def result_processor(loop: asyncio.AbstractEventLoop) -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="0.0.0.0", port=5042, reload=True, debug=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8877, reload=True, debug=True)

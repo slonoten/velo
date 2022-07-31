@@ -1,10 +1,20 @@
+"""Сервис для модели"""
+
 import asyncio
 import logging
 import json
+import time
+import uuid
+from timeit import default_timer
+import platform
 
 import aio_pika
 
-logger = logging.getLogger("__name__")
+worker_id = str(uuid.uuid1())
+
+node_name = platform.node()
+
+logger = logging.getLogger(f"worker-{worker_id}")
 
 
 async def main() -> None:
@@ -27,7 +37,18 @@ async def main() -> None:
                     body = message.body.decode("ascii")
                     logger.debug("Received: %s", body)
                     job = json.loads(body)
-                    result = {"id": job["id"], "embedding": [1.0, 2.0, 3.0]}
+                    # Имитация модели
+                    start = default_timer()
+                    time.sleep(0.01)
+                    stop = default_timer()
+                    result = {
+                        "id": job["id"], 
+                        "embedding": [1.0, 2.0, 3.0], 
+                        "model_time": stop - start,
+                        "worker_id": worker_id,
+                        "model_version": "1.0.0",
+                        "node_name": node_name
+                    }
                     await channel.default_exchange.publish(
                         aio_pika.Message(body = json.dumps(result).encode("ascii")),
                         routing_key=job["queue"]
