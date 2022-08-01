@@ -1,4 +1,4 @@
-"""Сервис для модели"""
+"""Model server"""
 
 import asyncio
 import logging
@@ -7,6 +7,7 @@ import time
 import uuid
 from timeit import default_timer
 import platform
+import os
 
 import aio_pika
 
@@ -16,10 +17,13 @@ node_name = platform.node()
 
 logger = logging.getLogger(f"worker-{worker_id}")
 
+rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://localhost")
+
 
 async def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
-    connection = await aio_pika.connect_robust(host="localhost")
+    await asyncio.sleep(10) # dirty hack
+    connection = await aio_pika.connect_robust(url = rabbitmq_url)
 
     queue_name = "jobs"
 

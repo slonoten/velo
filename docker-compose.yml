@@ -1,0 +1,41 @@
+version: '3'
+
+networks:
+    velo1:
+        driver: bridge
+
+services:
+    rabbitmq:
+        image: 'bitnami/rabbitmq:latest'
+        environment:
+            - RABBITMQ_DISK_FREE_RELATIVE_LIMIT=0.1
+        networks:
+        - velo1
+
+    api:
+        build:
+            context: ./velo/api
+            dockerfile: Dockerfile
+            args:
+                PORT: 8877
+                WORKERS: 4
+        environment:
+            - RABBITMQ_URL=amqp://user:bitnami@rabbitmq:5672/
+        ports:
+            - 8877:8877
+        depends_on:
+            - rabbitmq
+        networks:
+            - velo1
+
+    worker:
+        build:
+            context: ./velo/worker
+            dockerfile: Dockerfile
+        environment:
+            - RABBITMQ_URL=amqp://user:bitnami@rabbitmq:5672/
+        depends_on:
+            - rabbitmq
+        networks:
+            - velo1    
+

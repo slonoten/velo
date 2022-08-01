@@ -1,5 +1,15 @@
-# Прототип сервиса распределенного выполнения моделей
+# Proof of concept сервиса для распределенного исполнения моделей с интерфейсом HTTP
 
-## RabbitMQ
+## Запуск
 
-```docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.10-management```
+```
+git clone
+cd velo
+docker-compose up
+```
+
+Swagger: http://localhost:8877/docs
+
+
+
+
