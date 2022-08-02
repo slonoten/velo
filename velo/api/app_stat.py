@@ -10,6 +10,7 @@ N_LAST_TIMES_LENGTH = 1000
 # pylint: disable=no-name-in-module
 from pydantic import BaseModel
 
+
 class WorkerStat(BaseModel):
     last_seen: datetime
     model_version: str
@@ -41,7 +42,8 @@ class WorkerStatStore:
             last_seen=self.last_seen,
             model_version=self.model_version,
             node_name=self.node_name,
-            model_time=sum(self.model_times) / len(self.model_times) # divsion by zero is impossible
+            model_time=sum(self.model_times)
+            / len(self.model_times),  # divsion by zero is impossible
         )
 
 
@@ -57,10 +59,10 @@ class ModelStatStore:
         self.response_times.append(response_time)
         if len(self.response_times) > N_LAST_TIMES_LENGTH:
             self.response_times.popleft()
-        
+
     @property
     def mean_response_time(self):
         if self.response_times:
             return sum(self.response_times) / len(self.response_times)
         else:
-            return 0.
+            return 0.0

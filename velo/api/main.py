@@ -1,6 +1,6 @@
 """API for model predictions"""
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Tuple, Optional
 import asyncio
 import logging
 from logging.config import dictConfig
@@ -9,16 +9,23 @@ import json
 import itertools
 from timeit import default_timer
 import os
+import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, logger, HTTPException
 import aio_pika
 
 from logger_config import log_config
 from app_stat import ModelStatStore, ModelStat
 
+JOBS_QUEUE_NAME = "jobs"
+RETRY_COUNT = 2
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+
 dictConfig(log_config)
 
 logger = logging.getLogger("velo-logger")
+
+logging.getLogger("uvicorn").setLevel(LOG_LEVEL)
 
 rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://localhost")
 
@@ -30,7 +37,6 @@ def create_app() -> FastAPI:
 app = create_app()
 
 jobs_channel = None
-jobs_queue_name = "jobs"
 results_queue_name = f"results-{uuid.uuid4()}"
 
 job_counter = itertools.count()
@@ -39,11 +45,43 @@ job_id_to_result = {}
 
 stat_store = ModelStatStore()
 
+connected = asyncio.Event()
+
 
 @app.on_event("startup")
 def startup():
+    time.sleep(10)  # dirty hack
     loop = asyncio.new_event_loop()
     asyncio.ensure_future(result_processor(loop))
+
+
+async def predict(text: str) -> Optional[Dict[str, Any]]:
+    """Sends data to worker and waits for result
+    Args:
+        text (str): model input
+
+    Returns:
+        Optional[Dict[str, Any]]: Dict from worker or None if timeout excided
+    """
+    # Put job to queue
+    job_id = next(job_counter)
+    job = {"id": job_id, "text": text, "queue": results_queue_name}
+    logger.debug("Sending job to queue: %s", repr(job))
+    await jobs_channel.default_exchange.publish(
+        aio_pika.Message(body=json.dumps(job).encode("ascii")),
+        routing_key=JOBS_QUEUE_NAME,
+    )
+    # Wait for job result received
+    result_received_event = asyncio.Event()
+    job_id_to_event[job_id] = result_received_event
+    try:
+        await asyncio.wait_for(result_received_event.wait(), 1.0)
+        # Get result from dict by job id
+        result = job_id_to_result[job_id]
+        del job_id_to_result[job_id]
+        return result
+    except asyncio.TimeoutError:
+        return None
 
 
 @app.post("/transform", response_model=List[float])
@@ -52,24 +90,15 @@ async def transform(text: Union[List, Dict, Any]) -> List[float]:
         raise TypeError(f"Got {type(text)}. Expected str.")
     start = default_timer()
     logger.debug('Request: "%s..." (%d symbols).', text[:100], len(text))
-    # Put job to queue
-    job_id = next(job_counter)
-    job = {"id": job_id, "text": text, "queue": results_queue_name}
-    logger.debug("Sending job to queue: %s", repr(job))
-    await jobs_channel.default_exchange.publish(
-        aio_pika.Message(body=json.dumps(job).encode("ascii")),
-        routing_key=jobs_queue_name,
-    )
-    # Wait for job result received
-    result_received_event = asyncio.Event()
-    job_id_to_event[job_id] = result_received_event
-    await result_received_event.wait()
-    # Get result from dict by job id
-    result = job_id_to_result[job_id]
+    for _ in range(RETRY_COUNT):
+        result = await predict(text)
+        if result:
+            break
+    else:
+        raise HTTPException(408)
     logger.debug("Got result: %s", repr(result))
     stop = default_timer()
     stat_store.update(result=result, response_time=stop - start)
-    del job_id_to_result[job_id]
     return result["embedding"]
 
 
@@ -87,15 +116,26 @@ async def stat() -> ModelStat:
 async def result_processor(loop: asyncio.AbstractEventLoop) -> None:
     global jobs_channel
 
-    await asyncio.sleep(10)
-
     logger.debug('Connecting to RabbitMQ "%s"', rabbitmq_url)
 
-    connection = await aio_pika.connect_robust(url=rabbitmq_url)
+    for _ in range(5):
+        logger.debug('Trying to connect RabbitMQ "%s"', rabbitmq_url)
+        try:
+            connection = await aio_pika.connect_robust(url=rabbitmq_url)
+            break
+        except ConnectionError:
+            await asyncio.sleep(5)
+    else:
+        connection = await aio_pika.connect_robust(url=rabbitmq_url)
+
+    connected.set()
 
     async with connection:
         jobs_channel = await connection.channel()
-        await jobs_channel.declare_queue(jobs_queue_name)
+        # Если реализовывать устройчивость к падению ноды через подтверждение приёма сообщения
+        # то одно сообщение с данными вызывающими падение ноды приведет к падению всех нод по очереди
+        # поэтому auto_delete=True
+        await jobs_channel.declare_queue(JOBS_QUEUE_NAME, auto_delete=True)
 
         results_channel = await connection.channel()
         await results_channel.set_qos(prefetch_count=10)

@@ -1,3 +1,5 @@
+import os
+
 log_config = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -6,7 +8,6 @@ log_config = {
             "()": "uvicorn.logging.DefaultFormatter",
             "fmt": "%(levelprefix)s %(asctime)s %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
-
         },
     },
     "handlers": {
@@ -17,6 +18,9 @@ log_config = {
         },
     },
     "loggers": {
-        "velo-logger": {"handlers": ["default"], "level": "DEBUG"},
+        "velo-logger": {
+            "handlers": ["default"],
+            "level": os.environ.get("LOG_LEVEL", "INFO").upper(),
+        },
     },
 }

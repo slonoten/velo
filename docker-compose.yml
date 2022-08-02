@@ -34,6 +34,7 @@ services:
             dockerfile: Dockerfile
         environment:
             - RABBITMQ_URL=amqp://user:bitnami@rabbitmq:5672/
+            - LOG_LEVEL=INFO
         depends_on:
             - rabbitmq
         networks:
