@@ -2,13 +2,26 @@
 
 ## Запуск
 
+### Веса модели
+Загужаем из https://huggingface.co/cointegrated/rubert-tiny2/tree/main файлы 
+```config.json  pytorch_model.bin  tokenizer_config.json  tokenizer.json```.
+
+И экспоритрум путь к папке с загруженными файлами в переменную VELO_MODEL_PATH
+
+```
+export VELO_MODEL_PATH=/my/model/path
+```
+
+### Контейнеры
 ```
 git clone https://github.com/slonoten/velo.git
 cd velo
 docker-compose up
 ```
 
-Swagger: http://localhost:8877/docs
+### Swagger
+
+http://localhost:8877/docs
 
 
 ## Запуск с несколькими воркерами

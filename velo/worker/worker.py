@@ -12,6 +12,8 @@ import os
 
 import aio_pika
 
+from model import embed_bert_cls
+
 worker_id = str(uuid.uuid1())
 
 node_name = platform.node()
@@ -23,9 +25,8 @@ rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://localhost")
 
 def model_predict(text: str) -> List[float]:
     divider_of_doom = float(text != worker_id)  # Crash imitation
-    logger.debug("%s, %s, %f", text, worker_id, divider_of_doom)
-    time.sleep(0.01 / divider_of_doom)
-    return [1.0, 2.0, 3.0] * 100
+    z = 1 / divider_of_doom
+    return list(embed_bert_cls(text).astype(float))
 
 
 async def main() -> None:

@@ -12,9 +12,10 @@ USER app
 ENV HOME /home/app
 
 # Устанавливаем зависимости проекта
-COPY ./requirements.txt $HOME
-RUN pip install --user app -r $HOME/requirements.txt
 ENV PATH="$PATH:$HOME/.local/bin"
+COPY ./requirements.txt $HOME
+RUN pip install --upgrade pip
+RUN pip install --user app -r $HOME/requirements.txt
 
 # Set environment variables.
 # 1. Force Python stdout and stderr streams to be unbuffered.

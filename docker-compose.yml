@@ -35,6 +35,8 @@ services:
         environment:
             - RABBITMQ_URL=amqp://user:bitnami@rabbitmq:5672/
             - LOG_LEVEL=INFO
+        volumes:
+            - ${VELO_MODEL_PATH}:/model
         depends_on:
             - rabbitmq
         networks:

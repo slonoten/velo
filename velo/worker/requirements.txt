@@ -1,2 +1,5 @@
 aio_pika==8.1.1
 typer==0.6.1
+torch==1.9.0
+transformers==4.21.1
+sentencepiece==0.1.96
